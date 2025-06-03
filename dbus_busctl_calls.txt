@@ -1,0 +1,3 @@
+busctl call net.connman.iwd / org.freedesktop.DBus.ObjectManager GetManagedObjects <-- lists scanned networks?
+busctl call net.connman.iwd /net/connman/iwd/0/3 net.connman.iwd.Station Scan
+busctl call net.connman.iwd /net/connman/iwd/0/3 net.connman.iwd.Station GetOrderedNetworks

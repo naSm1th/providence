@@ -1,0 +1,8 @@
+.Device
+    Name
+
+.Station
+    State
+    Scanning
+    Mode
+    Powered
