@@ -1,22 +1,33 @@
 {
-  description = "Rust flake";
-  inputs =
-    {
-      nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05"; # or whatever vers
-    };
-  
-  outputs = { self, nixpkgs, ... }@inputs:
-    let
-     system = "x86_64-linux"; # your version
-     pkgs = nixpkgs.legacyPackages.${system};    
-    in
-    {
-      devShells.${system}.default = pkgs.mkShell
+  description = "A proper Nix flake for Rust development";
+
+  inputs = {
+    nixpkgs.url      = "github:NixOS/nixpkgs/nixos-unstable";
+    rust-overlay.url = "github:oxalica/rust-overlay";
+    flake-utils.url  = "github:numtide/flake-utils";
+  };
+
+  outputs = { self, nixpkgs, rust-overlay, flake-utils, ... }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        overlays = [ (import rust-overlay) ];
+        pkgs = import nixpkgs {
+          inherit system overlays;
+        };
+      in
       {
-        packages = with pkgs; [ 
-            rustup
-            dbus
-       ]; # whatever you need
-      };
-    };
+        devShells.default = with pkgs; mkShell {
+          buildInputs = [
+            openssl
+            pkg-config
+            rust-bin.stable.latest.default
+            bash
+          ];
+
+          shellHook = ''
+          '';
+        };
+      }
+    );
 }
+
