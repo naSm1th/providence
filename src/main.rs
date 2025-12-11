@@ -9,8 +9,7 @@ use zbus::{
 
 #[proxy(
     interface = "net.connman.iwd.Station",
-    default_service = "net.connman.iwd",
-    default_path = "/net/connman/iwd/0/3"
+    default_service = "net.connman.iwd"
 )]
 pub trait Station {
     /// ConnectHiddenNetwork method
@@ -56,8 +55,7 @@ pub trait Station {
 
 #[proxy(
     interface = "net.connman.iwd.Adapter",
-    default_service = "net.connman.iwd",
-    default_path = "/net/connman/iwd/0"
+    default_service = "net.connman.iwd"
 )]
 pub trait Adapter {
     /// Model property
@@ -85,8 +83,7 @@ pub trait Adapter {
 
 #[proxy(
     interface = "net.connman.iwd.p2p.Device",
-    default_service = "net.connman.iwd",
-    default_path = "/net/connman/iwd/0"
+    default_service = "net.connman.iwd"
 )]
 pub trait Device {
     /// GetPeers method
@@ -235,7 +232,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             );
             println!("\n\n");
 
-            let station_proxy: StationProxy = StationProxy::new(&connection).await?;
+            let station_proxy: StationProxy = StationProxy::new(&connection, object.0.as_str()).await?;
             let networks_list = station_proxy.get_ordered_networks().await?;
 
             for network in networks_list {
