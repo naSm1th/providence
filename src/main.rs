@@ -82,34 +82,33 @@ pub trait Adapter {
 }
 
 #[proxy(
-    interface = "net.connman.iwd.p2p.Device",
+    interface = "net.connman.iwd.Device",
     default_service = "net.connman.iwd"
 )]
 pub trait Device {
-    /// GetPeers method
-    fn get_peers(&self) -> zbus::Result<Vec<(zbus::zvariant::OwnedObjectPath, i16)>>;
-
-    /// ReleaseDiscovery method
-    fn release_discovery(&self) -> zbus::Result<()>;
-
-    /// RequestDiscovery method
-    fn request_discovery(&self) -> zbus::Result<()>;
-
-    /// AvailableConnections property
+    /// Adapter property
     #[zbus(property)]
-    fn available_connections(&self) -> zbus::Result<u16>;
+    fn adapter(&self) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
 
-    /// Enabled property
+    /// Address property
     #[zbus(property)]
-    fn enabled(&self) -> zbus::Result<bool>;
+    fn address(&self) -> zbus::Result<String>;
+
+    /// Mode property
     #[zbus(property)]
-    fn set_enabled(&self, value: bool) -> zbus::Result<()>;
+    fn mode(&self) -> zbus::Result<String>;
+    #[zbus(property)]
+    fn set_mode(&self, value: &str) -> zbus::Result<()>;
 
     /// Name property
     #[zbus(property)]
     fn name(&self) -> zbus::Result<String>;
+
+    /// Powered property
     #[zbus(property)]
-    fn set_name(&self, value: &str) -> zbus::Result<()>;
+    fn powered(&self) -> zbus::Result<bool>;
+    #[zbus(property)]
+    fn set_powered(&self, value: bool) -> zbus::Result<()>;
 }
 
 #[proxy(
@@ -153,8 +152,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let managed_objects = proxy.get_managed_objects().await?;
     let device_interface_name =
         OwnedInterfaceName::from(InterfaceName::try_from("net.connman.iwd.Device").unwrap());
+    let adapter_interface_name = OwnedInterfaceName::from(InterfaceName::try_from("net.connman.iwd.Adapter").unwrap());
     let station_interface_name =
         OwnedInterfaceName::from(InterfaceName::try_from("net.connman.iwd.Station").unwrap());
+    let ap_interface_name =
+        OwnedInterfaceName::from(InterfaceName::try_from("net.connman.iwd.AccessPoint").unwrap());
 
     for object in managed_objects {
         if object.1.contains_key(&device_interface_name)
@@ -171,98 +173,80 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .as_str()
                 == WIRELESS_DEVICE_NAME
         {
-            println!("Device:");
-            println!("\tPath: {}", object.0);
+            let device_path = object.0.clone();
+            let device_proxy = DeviceProxy::new(&connection, &device_path).await?;
+            let station_proxy = StationProxy::new(&connection, &device_path).await?;
+            let adapter_proxy: AdapterProxy = AdapterProxy::new(&connection, device_proxy.adapter().await.unwrap()).await?;
 
-            let device_object = object.1.get(&device_interface_name).unwrap();
-            let station_object = object.1.get(&station_interface_name).unwrap();
+            println!("Device:");
+            println!("\tPath: {}", device_path);
 
             println!(
                 "\tName: {}",
-                device_object
-                    .get("Name")
-                    .unwrap()
-                    .deref()
-                    .clone()
-                    .downcast::<zvariant::Str>()
-                    .unwrap()
-                    .as_str()
+                device_proxy.name().await.unwrap()
             );
-            println!(
-                "\tState: {}",
-                station_object
-                    .get("State")
-                    .unwrap()
-                    .deref()
-                    .clone()
-                    .downcast::<zvariant::Str>()
-                    .unwrap()
-                    .as_str()
-            );
-            println!(
-                "\tScanning: {}",
-                station_object
-                    .get("Scanning")
-                    .unwrap()
-                    .deref()
-                    .clone()
-                    .downcast::<bool>()
-                    .unwrap()
-            );
+            // println!(
+            //     "\tState: {}",
+            //     station_proxy.state().await.unwrap()
+            // );
+            // println!(
+            //     "\tScanning: {}",
+            //     station_proxy.scanning().await.unwrap()
+            // );
             println!(
                 "\tMode: {}",
-                device_object
-                    .get("Mode")
-                    .unwrap()
-                    .deref()
-                    .clone()
-                    .downcast::<zvariant::Str>()
-                    .unwrap()
-                    .as_str()
+                device_proxy.mode().await.unwrap()
             );
             println!(
                 "\tPowered: {}",
-                device_object
-                    .get("Powered")
-                    .unwrap()
-                    .deref()
-                    .clone()
-                    .downcast::<bool>()
-                    .unwrap()
+                device_proxy.powered().await.unwrap()
             );
             println!("\tModes supported: {:?}",
-                device_object.get("Adapter").unwrap().deref().clone()
+                adapter_proxy.supported_modes().await.unwrap_or(Vec::<String>::new())
             );
+            println!("\tCurrent mode: {}", device_proxy.mode().await.unwrap());
             println!("\n\n");
 
-            let station_proxy: StationProxy =
-                StationProxy::new(&connection, object.0.as_str()).await?;
-            let networks_list = station_proxy.get_ordered_networks().await?;
-
-            println!("| Connected? | SSID                             | Type  | Signal  |");
-            println!("|------------|----------------------------------|-------|---------|");
-
-            for network in networks_list {
-                let network_proxy = NetworkProxy::new(&connection, network.0.as_str()).await?;
-
-                println!(
-                    "| {:10} | {:32} | {:5} | {:7} |",
-                    network_proxy
-                        .connected()
-                        .await
-                        .map_or(String::from("Error getting value"), |value| value
-                            .to_string()),
-                    network_proxy
-                        .name()
-                        .await
-                        .unwrap_or(String::from("Error getting value")),
-                    network_proxy
-                        .type_()
-                        .await
-                        .unwrap_or(String::from("Error getting value")),
-                    network.1 / 100
-                );
+            println!("Setting mode to ap");
+            if station_proxy.disconnect().await.is_err() {
+                println!("Failed to disconnect");
             }
+            if device_proxy.set_mode("ap").await.is_err() {
+                println!("Failed to set mode");
+            }
+            while true {
+                println!("New mode: {}", device_proxy.mode().await.unwrap());
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            }
+            println!("\n\n");
+
+            // let networks_list = station_proxy.get_ordered_networks().await?;
+            // let networks_list = ap_proxy.get_ordered_networks().await?;
+
+            // println!("| Connected? | SSID                             | Type  | Signal  |");
+            // println!("|------------|----------------------------------|-------|---------|");
+
+            // for network in networks_list {
+            //     let network_proxy = NetworkProxy::new(&connection, network.0.as_str()).await?;
+
+            //     println!(
+            //         "| {:10} | {:32} | {:5} | {:7} |",
+            //         network_proxy
+            //             .connected()
+            //             .await
+            //             .map_or(String::from("Error getting value"), |value| value
+            //                 .to_string()),
+            //         network_proxy
+            //             .name()
+            //             .await
+            //             .unwrap_or(String::from("Error getting value")),
+            //         network_proxy
+            //             .type_()
+            //             .await
+            //             .unwrap_or(String::from("Error getting value")),
+            //         network.1 / 100
+            //     );
+            // }
         }
     }
 
