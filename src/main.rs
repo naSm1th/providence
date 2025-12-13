@@ -232,35 +232,58 @@ async fn main() -> Result<(), Box<dyn Error>> {
             );
             println!("\n\n");
 
-            let station_proxy: StationProxy = StationProxy::new(&connection, object.0.as_str()).await?;
+            let station_proxy: StationProxy =
+                StationProxy::new(&connection, object.0.as_str()).await?;
             let networks_list = station_proxy.get_ordered_networks().await?;
+
+            // print header
+            println!("| Connected? | SSID                             | Type  | Signal  |");
+            println!("|------------|----------------------------------|-------|---------|");
 
             for network in networks_list {
                 let network_proxy = NetworkProxy::new(&connection, network.0.as_str()).await?;
+                // println!(
+                //     "Connected: {}",
+                //     network_proxy
+                //         .connected()
+                //         .await
+                //         .map_or(String::from("Error getting value"), |value| value
+                //             .to_string())
+                // );
+                // println!(
+                //     "Name: {}",
+                //     network_proxy
+                //         .name()
+                //         .await
+                //         .unwrap_or(String::from("Error getting value"))
+                // );
+                // println!(
+                //     "Type: {}",
+                //     network_proxy
+                //         .type_()
+                //         .await
+                //         .unwrap_or(String::from("Error getting value"))
+                // );
+                // println!("Signal: {}dbm", network.1 / 100);
+                // println!();
+
                 println!(
-                    "Connected: {}",
+                    "| {:10} | {:32} | {:5} | {:7} |",
                     network_proxy
                         .connected()
                         .await
                         .map_or(String::from("Error getting value"), |value| value
-                            .to_string())
-                );
-                println!(
-                    "Name: {}",
+                            .to_string()),
                     network_proxy
                         .name()
                         .await
-                        .unwrap_or(String::from("Error getting value"))
-                );
-                println!(
-                    "Type: {}",
+                        .unwrap_or(String::from("Error getting value")),
                     network_proxy
                         .type_()
                         .await
-                        .unwrap_or(String::from("Error getting value"))
+                        .unwrap_or(String::from("Error getting value")),
+                    network.1 / 100
                 );
-                println!("Signal: {}dbm", network.1 / 100);
-                println!();
             }
         }
     }
