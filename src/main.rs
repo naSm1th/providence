@@ -230,6 +230,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     .downcast::<bool>()
                     .unwrap()
             );
+            println!("\tModes supported: {:?}",
+                device_object.get("Adapter").unwrap().deref().clone()
+            );
             println!("\n\n");
 
             let station_proxy: StationProxy =
