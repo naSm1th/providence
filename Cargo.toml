@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+ctrlc = "3.5.2"
 futures = "0.3.32"
 iwdrs = { version = "0.2.6", features = ["tokio"] }
 tokio = { version = "1.44.2", features = ["full"] }

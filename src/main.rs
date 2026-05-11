@@ -1,26 +1,65 @@
 const WIRELESS_DEVICE_NAME: &str = "wlan0";
 
-#[tokio::main]
-async fn main() -> Result<(), String> {
-    let session = iwdrs::session::Session::new().await.unwrap();
+async fn get_device_by_name(
+    session: &iwdrs::session::Session,
+    name: &str,
+) -> Result<iwdrs::device::Device, String> {
     let devices: Vec<iwdrs::device::Device> = session.devices().await.unwrap();
-    let device_option: std::option::Option<&iwdrs::device::Device> = futures::future::join_all(
-        devices
-            .iter()
-            .map(|dev: &iwdrs::device::Device| async move {
-                (dev, dev.name().await.unwrap().eq(WIRELESS_DEVICE_NAME))
-            }), // .collect(),
-    )
-    .await
-    .into_iter()
-    .filter_map(|(dev, valid)| if valid { Some(dev) } else { None })
-    .collect::<Vec<&iwdrs::device::Device>>()
-    .first()
-    .map(|dev| &**dev);
+    let device_option: std::option::Option<&iwdrs::device::Device> =
+        futures::future::join_all(
+            devices
+                .iter()
+                .map(|dev: &iwdrs::device::Device| async move {
+                    (dev, dev.name().await.unwrap().eq(name))
+                }), // .collect(),
+        )
+        .await
+        .into_iter()
+        .filter_map(|(dev, valid)| if valid { Some(dev) } else { None })
+        .collect::<Vec<&iwdrs::device::Device>>()
+        .first()
+        .map(|dev| &**dev);
 
     let device = match device_option {
         Some(device) => device,
-        _ => return Err(format!("Could not find device {}", WIRELESS_DEVICE_NAME)),
+        _ => return Err(format!("Could not find device {}", name)),
+    };
+
+    Ok(device.clone())
+}
+
+async fn shutdown() -> Result<(), String> {
+    // we must tear down the AP when we are done
+    // we must get the AP from the session, which must be retrieved first
+    let session = iwdrs::session::Session::new().await.unwrap();
+    let access_points = session.access_points().await.unwrap();
+    let access_point = match access_points.first() {
+        Some(ap) => ap,
+        _ => return Err("Failed to find AP".to_string()),
+    };
+
+    match access_point.stop().await {
+        Ok(()) => println!("AP stopped."),
+        Err(_) => return Err("Failed to stop AP".to_string()),
+    }
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<(), String> {
+    ctrlc::set_handler(move || {
+        let new_rt = tokio::runtime::Runtime::new()
+            .expect("Failed to create tokio runtime for Ctrl-C handler");
+        let res: Result<(), String> = new_rt.block_on(shutdown());
+        std::process::exit(if res.is_ok() { 0 } else { 1 });
+    })
+    .expect("Error setting Ctrl-C handler");
+
+    let session = iwdrs::session::Session::new().await.unwrap();
+    let device = match get_device_by_name(&session, WIRELESS_DEVICE_NAME).await {
+        Ok(dev) => dev,
+        Err(error) => return Err(error),
     };
 
     let adapter = device.adapter().await.unwrap();
@@ -58,6 +97,7 @@ async fn main() -> Result<(), String> {
         _ => return Err("Failed to retrieve device power state.".to_string()),
     }
 
+    let session = iwdrs::session::Session::new().await.unwrap();
 
     // now that the device is in AP mode, get the AP handle
     // do this in a loop because this seems to take a while
@@ -67,7 +107,7 @@ async fn main() -> Result<(), String> {
             Some(ap) => break ap.clone(),
             _ => println!("."),
         }
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
     };
 
     match access_point.start("bananya", "nyanyanya").await {
@@ -80,13 +120,9 @@ async fn main() -> Result<(), String> {
     // wait for a button press to tear down and exit
     println!("\nPress Enter to stop AP and exit...");
     let mut buffer = String::new();
-    std::io::stdin().read_line(&mut buffer).expect("Failed to read line");
+    std::io::stdin()
+        .read_line(&mut buffer)
+        .expect("Failed to read line");
 
-    // we must tear down the AP when we are done
-    match access_point.stop().await {
-        Ok(()) => println!("AP stopped."),
-        Err(_) => return Err("Failed to stop AP".to_string()),
-    }
-
-    Ok(())
+    return shutdown().await;
 }
