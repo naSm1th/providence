@@ -115,7 +115,25 @@ async fn main() -> Result<(), String> {
         Err(_) => return Err("Failed to start AP".to_string()),
     }
 
-    // tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
+    // TODO: spawn a task to repeatedly scan and collect network list
+    match access_point.scan().await {
+        Ok(()) => println!("Scan started"),
+        Err(_) => {
+            shutdown().await.unwrap();
+            return Err("Failed to start scan".to_string());
+        }
+    }
+
+    while access_point.is_scanning().await.unwrap_or(true) {
+        println!(".");
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+    }
+
+    if let Ok(networks) = access_point.networks().await {
+        for network in networks {
+            println!("{:?}", network);
+        }
+    }
 
     // wait for a button press to tear down and exit
     println!("\nPress Enter to stop AP and exit...");
