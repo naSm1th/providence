@@ -3,12 +3,25 @@
 
 mod ap;
 mod client;
+pub mod iwd_wrapper;
 
 use crate::configuration;
 
 enum Error {
     InvalidConfiguration,
     HardwareFailure,
+}
+
+enum Mode {
+    Idle,
+    AccessPoint,
+    Client,
+}
+
+struct NetworkResult {
+    network_name: String,
+    network_security: configuration::NetworkSecurityConfig,
+    signal_strength: u32,
 }
 
 // attempt to start in client mode
@@ -39,10 +52,19 @@ async fn ap_shutdown() -> Result<(), Error> {
 }
 
 // scan for network (async blocks)
+async fn ap_scan_for_networks() -> Result<Vec<NetworkResult>, Error> {
+    Ok(vec![])
+}
 
 // attempt connection to network
 // returns:
 // - success - connected to network
 // - error - failed to connect
+async fn attempt_connection(network: configuration::WifiClientConfig) -> Result<(), Error> {
+    Ok(())
+}
 
 // get current operating mode and state
+async fn get_mode() -> Result<Mode, Error> {
+    Ok(Mode::Idle)
+}

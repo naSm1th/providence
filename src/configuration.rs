@@ -6,7 +6,7 @@
 //      development this would be persisted in a writable partition).
 
 #[derive(Debug)]
-enum ClientIpConfig {
+pub enum ClientIpConfig {
     Dhcp,
     Manual {
         ip_addr: std::net::Ipv4Addr,
@@ -17,14 +17,10 @@ enum ClientIpConfig {
 }
 
 #[derive(Debug)]
-enum NetworkSecurityConfig {
+pub enum NetworkSecurityConfig {
     Open,
-    Wpa {
-        password: String,
-    },
-    Wpa2 {
-        password: String,
-    },
+    Wpa { password: String },
+    Wpa2 { password: String },
 }
 
 #[derive(Debug)]
@@ -35,7 +31,7 @@ pub struct WifiClientConfig {
 }
 
 #[derive(Debug)]
-struct ApIpConfig {
+pub struct ApIpConfig {
     ip_addr: std::net::Ipv4Addr,
     subnet_mask: std::net::Ipv4Addr,
 }

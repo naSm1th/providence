@@ -1,2 +1,2 @@
 mod configuration;
-mod network;
+pub mod network;

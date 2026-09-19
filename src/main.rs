@@ -1,33 +1,5 @@
 const WIRELESS_DEVICE_NAME: &str = "wlan0";
 
-async fn get_device_by_name(
-    session: &iwdrs::session::Session,
-    name: &str,
-) -> Result<iwdrs::device::Device, String> {
-    let devices: Vec<iwdrs::device::Device> = session.devices().await.unwrap();
-    let device_option: std::option::Option<&iwdrs::device::Device> =
-        futures::future::join_all(
-            devices
-                .iter()
-                .map(|dev: &iwdrs::device::Device| async move {
-                    (dev, dev.name().await.unwrap().eq(name))
-                }), // .collect(),
-        )
-        .await
-        .into_iter()
-        .filter_map(|(dev, valid)| if valid { Some(dev) } else { None })
-        .collect::<Vec<&iwdrs::device::Device>>()
-        .first()
-        .map(|dev| &**dev);
-
-    let device = match device_option {
-        Some(device) => device,
-        _ => return Err(format!("Could not find device {}", name)),
-    };
-
-    Ok(device.clone())
-}
-
 async fn shutdown() -> Result<(), String> {
     // we must tear down the AP when we are done
     // we must get the AP from the session, which must be retrieved first
@@ -56,27 +28,36 @@ async fn main() -> Result<(), String> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    let session = iwdrs::session::Session::new().await.unwrap();
-    let device = match get_device_by_name(&session, WIRELESS_DEVICE_NAME).await {
-        Ok(dev) => dev,
-        Err(error) => return Err(error),
-    };
+    // let session = iwdrs::session::Session::new().await.unwrap();
+    // let device = match get_device_by_name(&session, WIRELESS_DEVICE_NAME).await {
+    //     Ok(dev) => dev,
+    //     Err(error) => return Err(error),
+    // };
 
-    let adapter = device.adapter().await.unwrap();
+    // let adapter = device.adapter().await.unwrap();
 
-    println!(
-        "Modes support by adapter {} (for device {}): {}",
-        adapter.name().await.unwrap(),
-        device.name().await.unwrap(),
-        adapter.supported_modes().await.unwrap().join(", ")
-    );
+    // println!(
+    //     "Modes support by adapter {} (for device {}): {}",
+    //     adapter.name().await.unwrap(),
+    //     device.name().await.unwrap(),
+    //     adapter.supported_modes().await.unwrap().join(", ")
+    // );
+
+    let iwd_handle =
+        providence::network::iwd_wrapper::get_iwd_connection_by_name(WIRELESS_DEVICE_NAME).await?;
+    providence::network::iwd_wrapper::print_device_info(&iwd_handle).await;
 
     // first, ensure the device is in AP mode
-    match device.get_mode().await {
+    match providence::network::iwd_wrapper::get_device_mode(&iwd_handle).await {
         Ok(iwdrs::modes::Mode::Ap) => println!("Device in AP mode already"),
         Ok(iwdrs::modes::Mode::Station) => {
             println!("Device in station mode. Switching to AP mode.");
-            match device.set_mode(iwdrs::modes::Mode::Ap).await {
+            match providence::network::iwd_wrapper::set_device_mode(
+                &iwd_handle,
+                iwdrs::modes::Mode::Ap,
+            )
+            .await
+            {
                 Ok(()) => println!("Done."),
                 _ => return Err("Failed to switch to AP mode.".to_string()),
             }
@@ -85,11 +66,11 @@ async fn main() -> Result<(), String> {
     }
 
     // second, ensure the device is powered
-    match device.is_powered().await {
+    match providence::network::iwd_wrapper::get_device_powered(&iwd_handle).await {
         Ok(true) => println!("Device already powered on."),
         Ok(false) => {
             println!("Device powered off. Powering on.");
-            match device.set_power(true).await {
+            match providence::network::iwd_wrapper::set_device_powered(&iwd_handle, true).await {
                 Ok(()) => println!("Done."),
                 _ => return Err("Failed to power on device.".to_string()),
             }
@@ -97,12 +78,14 @@ async fn main() -> Result<(), String> {
         _ => return Err("Failed to retrieve device power state.".to_string()),
     }
 
-    let session = iwdrs::session::Session::new().await.unwrap();
+    // let session = iwdrs::session::Session::new().await.unwrap();
+    let iwd_handle =
+        providence::network::iwd_wrapper::get_iwd_connection_by_name(WIRELESS_DEVICE_NAME).await?;
 
     // now that the device is in AP mode, get the AP handle
     // do this in a loop because this seems to take a while
     let access_point = loop {
-        let access_points = session.access_points().await.unwrap();
+        let access_points = providence::network::iwd_wrapper::get_access_points(&iwd_handle).await?;
         match access_points.first() {
             Some(ap) => break ap.clone(),
             _ => println!("."),
