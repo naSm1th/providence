@@ -1,0 +1,10 @@
+Default release: 4.8MB
+strip = true: 3.6MB (-1.2MB)
+LTO: 3.3MB (-1.5MB)
+panic = abort: 3.2MB (-1.6MB)
+opt-level = 3: 4.8MB (no improvement)
+
+all of the above: 2.3MB (-2.5MB)
+    opt-level = 3 made no difference
+    opt-level = "s": 1.6M (-0.7MB)
+    codegen-units = 1: 1.5M (-0.1MB)
