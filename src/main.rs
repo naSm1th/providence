@@ -1,3 +1,6 @@
+use futures::TryStreamExt;
+use rtnetlink::AddressMessageBuilder;
+
 const WIRELESS_DEVICE_NAME: &str = "wlan0";
 
 async fn get_device_by_name(
@@ -41,6 +44,42 @@ async fn shutdown() -> Result<(), String> {
     match access_point.stop().await {
         Ok(()) => println!("AP stopped."),
         Err(_) => return Err("Failed to stop AP".to_string()),
+    }
+
+    // drop the IP addresses
+    let (connection, handle, _) = rtnetlink::new_connection().unwrap();
+    tokio::spawn(connection);
+    let mut links = handle.link().get().match_name("wlan0").execute();
+    if let Some(link) = links.try_next().await.unwrap() {
+        let mut addresses = handle
+            .address()
+            .get()
+            .set_link_index_filter(link.header.index)
+            .execute();
+        while let Some(msg) = addresses.try_next().await.unwrap() {
+            // println!("{0:?}", msg.attributes);
+
+            if let Some(address) = msg.attributes.iter().find_map(|item| match item {
+                rtnetlink::packet_route::address::AddressAttribute::Address(addr) => Some(*addr),
+                _ => None,
+            }) {
+                let message = match address {
+                    std::net::IpAddr::V4(addr) => {
+                        AddressMessageBuilder::<std::net::Ipv4Addr>::new()
+                            .index(link.header.index)
+                            .address(addr, msg.header.prefix_len)
+                            .build()
+                    }
+                    std::net::IpAddr::V6(addr) => {
+                        AddressMessageBuilder::<std::net::Ipv6Addr>::new()
+                            .index(link.header.index)
+                            .address(addr, msg.header.prefix_len)
+                            .build()
+                    }
+                };
+                handle.address().del(message).execute().await.unwrap()
+            };
+        }
     }
 
     Ok(())
@@ -116,6 +155,23 @@ async fn main() -> Result<(), String> {
     }
 
     // tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
+
+    // set static IP address
+    let (connection, handle, _) = rtnetlink::new_connection().unwrap();
+    tokio::spawn(connection);
+    let mut links = handle.link().get().match_name("wlan0").execute();
+    if let Some(link) = links.try_next().await.unwrap() {
+        handle
+            .address()
+            .add(
+                link.header.index,
+                std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 120, 2)),
+                24,
+            )
+            .execute()
+            .await
+            .unwrap()
+    }
 
     // wait for a button press to tear down and exit
     println!("\nPress Enter to stop AP and exit...");
