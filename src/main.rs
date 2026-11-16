@@ -5,27 +5,26 @@ const WIRELESS_DEVICE_NAME: &str = "wlan0";
 
 async fn get_device_by_name(
     session: &iwdrs::session::Session,
-    name: &str,
+    name: impl Into<String>,
 ) -> Result<iwdrs::device::Device, String> {
+    let name_string = name.into();
     let devices: Vec<iwdrs::device::Device> = session.devices().await.unwrap();
-    let device_option: std::option::Option<&iwdrs::device::Device> =
-        futures::future::join_all(
-            devices
-                .iter()
-                .map(|dev: &iwdrs::device::Device| async move {
-                    (dev, dev.name().await.unwrap().eq(name))
-                }), // .collect(),
-        )
-        .await
-        .into_iter()
-        .filter_map(|(dev, valid)| if valid { Some(dev) } else { None })
-        .collect::<Vec<&iwdrs::device::Device>>()
-        .first()
-        .map(|dev| &**dev);
+    let device_option: std::option::Option<&iwdrs::device::Device> = futures::future::join_all(
+        devices.iter().map(|dev: &iwdrs::device::Device| {
+            let value = name_string.clone();
+            async move { (dev, dev.name().await.unwrap().eq(&value)) }
+        }), // .collect(),
+    )
+    .await
+    .into_iter()
+    .filter_map(|(dev, valid)| if valid { Some(dev) } else { None })
+    .collect::<Vec<&iwdrs::device::Device>>()
+    .first()
+    .map(|dev| &**dev);
 
     let device = match device_option {
         Some(device) => device,
-        _ => return Err(format!("Could not find device {}", name)),
+        _ => return Err(format!("Could not find device {}", &name_string)),
     };
 
     Ok(device.clone())
@@ -46,10 +45,37 @@ async fn shutdown() -> Result<(), String> {
         Err(_) => return Err("Failed to stop AP".to_string()),
     }
 
+    flush_ip_addrs_on_iface(WIRELESS_DEVICE_NAME).await
+}
+
+async fn set_ip_addr_on_iface(
+    iface_name: impl Into<String>,
+    ip_addr: std::net::IpAddr,
+    netmask: u8,
+) -> Result<(), String> {
+    let iface_name_string = iface_name.into();
+    let (connection, handle, _) = rtnetlink::new_connection().unwrap();
+    tokio::spawn(connection);
+    let mut links = handle.link().get().match_name(&iface_name_string).execute();
+    if let Some(link) = links.try_next().await.unwrap() {
+        handle
+            .address()
+            .add(link.header.index, ip_addr, netmask)
+            .execute()
+            .await
+            .map_err(|_| format!("Failed to set ip address on iface {}", iface_name_string))?;
+    } else {
+        return Err(format!("iface with name {} not found", iface_name_string));
+    }
+
+    Ok(())
+}
+
+async fn flush_ip_addrs_on_iface(iface_name: impl Into<String>) -> Result<(), String> {
     // drop the IP addresses
     let (connection, handle, _) = rtnetlink::new_connection().unwrap();
     tokio::spawn(connection);
-    let mut links = handle.link().get().match_name("wlan0").execute();
+    let mut links = handle.link().get().match_name(iface_name).execute();
     if let Some(link) = links.try_next().await.unwrap() {
         let mut addresses = handle
             .address()
@@ -156,22 +182,12 @@ async fn main() -> Result<(), String> {
 
     // tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
 
-    // set static IP address
-    let (connection, handle, _) = rtnetlink::new_connection().unwrap();
-    tokio::spawn(connection);
-    let mut links = handle.link().get().match_name("wlan0").execute();
-    if let Some(link) = links.try_next().await.unwrap() {
-        handle
-            .address()
-            .add(
-                link.header.index,
-                std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 120, 2)),
-                24,
-            )
-            .execute()
-            .await
-            .unwrap()
-    }
+    set_ip_addr_on_iface(
+        WIRELESS_DEVICE_NAME,
+        std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 120, 2)),
+        24,
+    )
+    .await?;
 
     // wait for a button press to tear down and exit
     println!("\nPress Enter to stop AP and exit...");
