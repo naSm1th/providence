@@ -28,21 +28,6 @@ async fn main() -> Result<(), String> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    // let session = iwdrs::session::Session::new().await.unwrap();
-    // let device = match get_device_by_name(&session, WIRELESS_DEVICE_NAME).await {
-    //     Ok(dev) => dev,
-    //     Err(error) => return Err(error),
-    // };
-
-    // let adapter = device.adapter().await.unwrap();
-
-    // println!(
-    //     "Modes support by adapter {} (for device {}): {}",
-    //     adapter.name().await.unwrap(),
-    //     device.name().await.unwrap(),
-    //     adapter.supported_modes().await.unwrap().join(", ")
-    // );
-
     let iwd_handle =
         providence::network::iwd_wrapper::get_iwd_connection_by_name(WIRELESS_DEVICE_NAME).await?;
     providence::network::iwd_wrapper::print_device_info(&iwd_handle).await;
@@ -78,7 +63,6 @@ async fn main() -> Result<(), String> {
         _ => return Err("Failed to retrieve device power state.".to_string()),
     }
 
-    // let session = iwdrs::session::Session::new().await.unwrap();
     let iwd_handle =
         providence::network::iwd_wrapper::get_iwd_connection_by_name(WIRELESS_DEVICE_NAME).await?;
 
